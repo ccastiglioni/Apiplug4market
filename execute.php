@@ -16,8 +16,7 @@ $url_prod  = URL_PROD;
  
 $url_refresh = "https://api.sandbox.plug4market.com.br/auth/refresh";
 $url_pedidos = "https://api.sandbox.plug4market.com.br/orders/";
-$url_confirma_pedido = "https://api.sandbox.plug4market.com.br/orders/7/confirm";  
-
+ 
 $act = $_GET['action'];
  
 switch ($act) {
@@ -56,8 +55,10 @@ switch ($act) {
 		case 'add_produto':
 		
 			 //Cadastrar um produto
+		  $prd_codigo = $_GET['id_codigo'];
+
 			$tokensArr = $prod->gettokensDb();
-			$arrBody   = $prod->setProduto(1,24);
+			$arrBody   = $prod->setProduto(1,$prd_codigo);
 			$headerArgs =array(
 				"Content-Type"  =>"application/json",
 				"Content-Length"=> strlen($arrBody),
@@ -79,7 +80,7 @@ switch ($act) {
 
 			case 'update_produto':
 		
-			 //Cadastrar um produto 
+			 //Cadastrar um produto  
 			$sku = '3';
 			$sku_post = 'CW100-01';
 			$tokensArr = $prod->gettokensDb();
@@ -137,6 +138,7 @@ switch ($act) {
 	
 		case 'add_venda':
 			//cadastrar venda
+		  $emp_codigo ='2010';
 			$tokensArr = $prod->gettokensDb();
 			$headerArgs =array(
 				"Content-Type"  =>"application/json",
@@ -153,13 +155,13 @@ switch ($act) {
 
 				foreach ($arrPedidos->data as $ped_key => $ped) {
 					  echo "venda ID : ".$ped->id . "<br>";
-					  $response_inc[] = $curl->request('GET', $url_pedidos . (string) $ped->id , array());
+					  $response_inc[$ped->id] = $curl->request('GET', $url_pedidos . (string) $ped->id , array());
 				}
 
 			 $ped = new Pedido($sql);
-			 $ped->setVenda($response_inc);
+			 $ped->setVenda($response_inc,$emp_codigo);
 
-				echo "<br><p style='color:#155724;background-color:#d4edda;border-color:#c3e6cb;padding:13px;'>Listagem realizado com Sucesso! Total de vendas : {$totalvendas}</p><br>";
+				echo "<br><p style='color:#155724;background-color:#d4edda;border-color:#c3e6cb;padding:13px;'>Cadastro de vendas realizado com Sucesso! Total de vendas : {$totalvendas}</p><br>";
 				echo "<pre>";
 				$arrPedidos  = json_decode($response->body);
 				var_dump($arrPedidos);
@@ -170,7 +172,6 @@ switch ($act) {
 			die('Erro!');	
 			}
 		break;
-
 
 		case 'list_pedidos':
 			//Lista pedidos
@@ -192,7 +193,6 @@ switch ($act) {
 				foreach ($arrPedidos->data as $ped_key => $ped) {
 					  echo "venda ID : ".$ped->id . "<br>";
 				}
-
 
 				echo "<br><p style='color:#155724;background-color:#d4edda;border-color:#c3e6cb;padding:13px;'>Listagem realizado com Sucesso! Total de vendas : {$totalvendas}</p><br>";
 				echo "<pre>";
@@ -234,53 +234,165 @@ switch ($act) {
 		break;
 	
 		case 'confirma_pedido':
-			//Confirmação do pedido
+			/*
+			** Confirmação do pedido
+			** status 6 recebido
+			** status 7 confirma pedido
+			** status 8 confirmado fatura
+		 */
 			$tokensArr = $prod->gettokensDb();
-			$arrBody = $prod->setPedido();
+			$arrBody = $prod->setbodyschemaPedido(001,$fatura='',$rastreio='',$entrega='');
 			$headerArgs =array(
 				"Content-Type"  =>"application/json",
 				"Authorization" =>"Bearer ".$tokensArr[0]
 			);
-
 			$curl->headers = $headerArgs;
-			// url_confirma_pedido :  https://api.sandbox.plug4market.com.br/orders/{orderId}/confirm
-			$response = $curl->request('POST', $url_confirma_pedido, $arrBody);
 
-			if ($response->headers['Status'] == "201 Created") {
-				echo "<br><p style='color:#155724;background-color:#d4edda;border-color:#c3e6cb;padding:13px;'>Pedido realizado com Sucesso! </p><br>";
+			$ped = new Pedido($sql);
+ 
+			 foreach ($ped->getconfirmPedido() as $key => $id_pedido) {
+					if (!empty($id_pedido)){
+							$url_confirma_pedido = $url_pedidos . $id_pedido . "/confirm";
+							$response = $curl->request('POST', $url_confirma_pedido, $arrBody);
+					    if ($response->headers['Status-Code'] == "200") {
+					    	 $arr_resp = $ped->setconfirmPedido($id_pedido);
+					    	 if ($arr_resp['status'] =='success') {
+					    	 	   echo json_encode($arr_resp);
+					    	 }else{
+					    	 	   echo json_encode($arr_resp);
+					    	 }
+					    }
+
+					}else{
+					 	echo json_encode('Nenhum pedido pendente em tvenda!');
+					 	//die;
+					}
+			 }
+
+			if ($response->headers['Status'] == "200 OK") {
+				echo "<br><p style='color:#155724;background-color:#d4edda;border-color:#c3e6cb;padding:13px;'>Pedido confirmado com Sucesso! </p><br>";
+				echo "<pre>";
+				var_dump($response);
+				die;
+
 			}else{
-			echo "<pre>";
-			var_dump($response);
-			die;	
+				echo "<pre>";
+				var_dump($response);
+				die;	
 			}
 
 		break; 
 	
-		case 'confirma_fatura':
-		// Confirmação do faturamento
-		//https://api.sandbox.plug4market.com.br/orders/{orderId}/invoice
-		/*		{
-		  "nfeDate": "2019-08-24T14:15:22Z",
-		  "nfeNumber": "string",
-		  "nfeSerialNumber": "string",
-		  "nfeAccessKey": "string",
-		  "xml": "string"
-		}*/
+		case 'confirma_fatura': 
+		/*
+			** Confirmação do Faturamento
+			** status 6 recebido
+			** status 7 confirma pedido
+			** status 8 confirma fatura
+		 */
+		$tokensArr = $prod->gettokensDb();
+		$arrBody   = $prod->setbodyschemaPedido($pedido='','fatura',$rastreio='',$entrega='');
+	 
+
+		$headerArgs =array(
+			"Content-Type"  =>"application/json",
+			"Authorization" =>"Bearer ".$tokensArr[0]
+		);
+		$curl->headers = $headerArgs;
+
+  	$ped = new Pedido($sql);
+
+		foreach ($ped->getconfirmFatura() as $key => $id_pedido) {
+				if (!empty($id_pedido)){
+						$url_confirma_pedido = $url_pedidos . $id_pedido . "/invoice";
+						$response = $curl->request('POST', $url_confirma_pedido, $arrBody);
+				    if ($response->headers['Status-Code'] == "200") {
+				    	 $arr_resp = $ped->setconfirmPedido($id_pedido,8);
+				    	 if ($arr_resp['status'] =='success') {
+				    	 	   echo json_encode($arr_resp);
+				    	 }else{
+				    	 	   echo json_encode($arr_resp);
+				    	 }
+				    }
+
+				}else{
+				 	echo json_encode('Nenhum pedido pendente em tvenda!');
+				 	//die;
+				}
+		 }
+
+	
+		if ($response->headers['Status'] == "200 OK") {
+				echo "<br><p style='color:#155724;background-color:#d4edda;border-color:#c3e6cb;padding:13px;'>Pedido confirmado com Sucesso! </p><br>";
+				echo "<pre>";
+				var_dump($response);
+				die;
+
+		}else{
+				echo "<pre>";
+				var_dump($response);
+				die;	
+		}
 
 		break;	
+
 		case 'confirma_envio':
+
 		// Confirmação do envio
 		//https://api.sandbox.plug4market.com.br/orders/{orderId}/shipment
+		/*
+			** Confirmação do Faturamento
+			** status 6 recebido
+			** status 7 confirma pedido
+			** status 8 confirma fatura
+			** status 9 Confirmação do envio (dados de rastreamento do pedido)
+		 */
+		$tokensArr = $prod->gettokensDb();
+		$arrBody   = $prod->setbodyschemaPedido($pedido='',$fatura='','rastreio',$entrega='');
+	 
+		$headerArgs =array(
+			"Content-Type"  =>"application/json",
+			"Authorization" =>"Bearer ".$tokensArr[0]
+		);
+		$curl->headers = $headerArgs;
 
-		/*		
-			{ 
-			  "trackingNumber": "BR132323232OO",
-			  "shippingCarrier": "Correios - SEDEX",
-			  "trackingUrl": "http://shipping.transportadora.com.br/BR132323232OO"
-			}
-		*/
+  	$ped = new Pedido($sql);
 
-		break;
+		foreach ($ped->getconfirmEnvio() as $key => $id_pedido) {
+				if (!empty($id_pedido)){
+						$url_confirma_pedido = $url_pedidos . $id_pedido . "/shipment";
+						$response = $curl->request('POST', $url_confirma_pedido, $arrBody);
+				    if ($response->headers['Status-Code'] == "200") {
+				    	 $arr_resp = $ped->setconfirmPedido($id_pedido,9);
+				    	 if ($arr_resp['status'] =='success') {
+				    	 	   echo json_encode($arr_resp);
+				    	 }else{
+				    	 	   echo json_encode($arr_resp);
+				    	 }
+				    }
+
+				}else{
+				 	echo json_encode('Nenhum pedido faturado ( status=8 ) em tvenda!');
+				 	//die;
+				}
+		 }
+
+	
+		if ($response->headers['Status'] == "200 OK") {
+				echo "<br><p style='color:#155724;background-color:#d4edda;border-color:#c3e6cb;padding:13px;'>Pedido confirmado com Sucesso! </p><br>";
+				echo "<pre>";
+				var_dump($response);
+				die;
+
+		}else{
+				echo "<pre>";
+				var_dump($response);
+				die;	
+		}
+
+		break;	
+
+
 		case 'confirma_entrega':
 		// Confirmação da entrega
 		//https://api.sandbox.plug4market.com.br/orders/{orderId}/delivered
@@ -349,8 +461,8 @@ switch ($act) {
           </div>
           <div class="col-md-4">
             <h2>Produtos</h2>
-            <p>Está fixo no php o produto pois tem campos obrigatórios que devem satisfazer a API. ID: 24</p>
-            <p><a class="btn btn-secondary" href="http://desenvolvimento.vaplink.com.br/dev/cleber/plug4market/execute.php?action=add_produto" role="button">Adicionar produto &raquo;</a></p>
+            <p>Está fixo no php o produto pois tem campos obrigatórios(peso,largura,altura.. etc) que devem satisfazer a API. ID: 35</p>
+            <p><a class="btn btn-secondary" href="http://desenvolvimento.vaplink.com.br/dev/cleber/plug4market/execute.php?action=add_produto&id_codigo=35" role="button">Adicionar produto &raquo;</a></p>
           </div>
           <div class="col-md-4">
             <h2>Produtos</h2>
@@ -369,9 +481,19 @@ switch ($act) {
             <p><a class="btn btn-success" href="http://desenvolvimento.vaplink.com.br/dev/cleber/plug4market/execute.php?action=consulta_pedido" role="button">Consultar um pedido &raquo;</a></p>
           </div>
           <div class="col-md-4">
-            <h2>Pedidos</h2>
-            <p><b>Confirma pedido</b> o que esta no hub da API</p>
-            <p><a class="btn btn-success" href="http://desenvolvimento.vaplink.com.br/dev/cleber/plug4market/execute.php?action=confirma_pedido" role="button">Consulta pedidos &raquo;</a></p>
+            <h2>Pedidos 1</h2>
+            <p><b>Confirma pedidos</b> Após um novo pedido ter sido identificado no Hub, é necessário realizar a confirmação da integração do pedido com o ID que está em vnd_campo1 e status = 6, muda pra status=7</p>
+            <p><a class="btn btn-success" href="http://desenvolvimento.vaplink.com.br/dev/cleber/plug4market/execute.php?action=confirma_pedido" role="button">Confirmar pedidos &raquo;</a></p>
+          </div>
+          <div class="col-md-4">
+            <h2>Pedidos 2</h2>
+            <p><b>Confirmação do faturamento</b> Após a integração do pedido em seu sistema, para prosseguir com o processo de venda é essencial o envio da nota fiscal ao comprador.</p>
+            <p><a class="btn btn-success" href="http://desenvolvimento.vaplink.com.br/dev/cleber/plug4market/execute.php?action=confirma_fatura" role="button">Enviar nota fiscal &raquo;</a></p>
+          </div>
+          <div class="col-md-4">
+            <h2>Pedidos 3</h2>
+            <p><b>Confirmação de Pedido (envio do cod rastreamento correios)</b>Após o faturamento, é necessário enviar os dados de envio para o comprador poder rastrear sua compra. Esta rota permite receber os dados de rastreamento, podendo ser o número/código de rastreio, o nome da transportadora e uma URL para rastreio (se houver).</p>
+            <p><a class="btn btn-success" href="http://desenvolvimento.vaplink.com.br/dev/cleber/plug4market/execute.php?action=confirma_envio" role="button">Enviar Cod de Rastreio &raquo;</a></p>
           </div>
 
                <div class="col-md-4">

@@ -12,28 +12,31 @@
             7=>"Mercado Livre"
         );
 
+       /*public $arr_status = array(
+            1=>"Amazon",
+            26>"Shopee",
+            7=>"Mercado Livre"
+        );*/ 
          
         public function __construct($sql)
         {
             $this->p_sql = $sql;
         }
 
-        public function setVenda($arr_pedidos ) {
+        public function setVenda($arr_pedidos,$emp_codigo ) {
                     
             //$meiopgt=$ped->paymentMethods;
             //print_r($ped );
             // foreach ($ped->billing as $kcli => $cli) {
             //echo "<pre>";
-            //print_r($ped->billing->email );
-
-            /*        echo "<br><br><br> var_dump:<pre>";
-            var_dump( $ped);
-            die; */
+            //print_r($ped->billing->email );               
              $i=0;
-             foreach ($arr_pedidos as $key => $ped) {
+             foreach ($arr_pedidos as $ped_id_hub => $ped) {
+
                  $ped = json_decode($ped->body);
                  $dateNow = date('Y-m-d');
                  $horaNow = date('H:i:s');
+               
 
                  if ($i == 0) { 
 
@@ -51,21 +54,20 @@
                     $valores['vnd_cli_codigo'] =  $this->user_id ;
                     $valores['vnd_datavenda']  = date('Y-m-d',strtotime($ped->saleChannelCreated ));
                     $valores['vnd_horavenda']  = date('H:i:s',strtotime($ped->saleChannelCreated ));
-                    $valores['vnd_status']     = 2; 
+                    $valores['vnd_status']     = 0; 
                     $valores['vnd_campo3']     = $ped->saleChannelName . $tipo_transp;
                     $valores['vnd_tipo']       = 1;         
                     $valores['vnd_lojavirtual']= 1;            
                     $valores['vnd_dataentrega']  = date('Y-m-d',strtotime($ped->estimatedDeliveredAt));
-                    $valores['vnd_campo1'] = 'id da venda:'.$ped->id;
-                    //$valores['vnd_emp_codigo'] = $IdLoja;
+                    $valores['vnd_campo1'] = $ped->id;
+                    $valores['vnd_campo4'] = 6; // 6: recebido do hub // 7: confirmado para Hub // 8: confimado fatura 
+                    $valores['vnd_emp_codigo'] = $emp_codigo;
 
                     $this->p_sql->adiciona("tvenda", array_keys($valores), $valores);
                     $this->p_sql->query();
                     //echo $this->p_sql->clausula_sql."<br><br>";    
                     //echo 'ERRO: tvenda '.$this->p_sql->last_error."<br><br>";
                 }
-
-            
 
                 $fatr_codigo = $this->p_sql->maximo("tfaturasareceber", "fatr_codigo") + 1;
                 $val_ftr['fatr_codigo']       = $fatr_codigo;      
@@ -86,7 +88,6 @@
                 //echo $this->p_sql->clausula_sql."<br><br>";    
                 //echo 'ERRO: tfaturasareceber '.$this->p_sql->last_error."<br><br>";
 
-                
                 foreach ($ped->orderItems as $kprod => $prod) {
                          
                          //echo $prod->price ."<br>";
@@ -233,15 +234,67 @@
              return $return; 
          }
 
-
-        public function setPedido() {
+         public function getconfirmPedido(){
+            $consulta = "SELECT vnd_campo1 FROM `tvenda` WHERE vnd_lojavirtual='1' and vnd_status=0 and vnd_campo1 is not nul and vnd_campo4='6'  ";
+            $this->p_sql->query($consulta);
+            $row      = $this->p_sql->retorna();
+            $num      = $this->p_sql->numerodelinhas();
              
-            $vars = json_encode(array(
-                "orderIdStore"    => '7'
-            ));
+             if ( $num > 0 ) {
+               $return = $row;
+             }else{
+               $return = array('' => 0);
+             }
+             
+             return $return; 
+         }
 
-            return $vars;
-        }
+         public function getconfirmFatura(){
+            //pega os que já foram confirmados com pedido recebido no nosso Db
+            $consulta = "SELECT vnd_campo1 FROM `tvenda` WHERE vnd_lojavirtual='1' and vnd_campo4=7 ";
+            $this->p_sql->query($consulta);
+            $row      = $this->p_sql->retorna();
+            $num      = $this->p_sql->numerodelinhas();
+             
+             if ( $num > 0 ) {
+               $return = $row;
+             }else{
+               $return = array('' => 0);
+             }
+             
+             return $return; 
+         }
+
+         public function getconfirmEnvio(){
+            //pega os que já foram confirmados com pedido recebido no nosso Db
+            $consulta = "SELECT vnd_campo1 FROM `tvenda` WHERE vnd_lojavirtual='1' and vnd_campo4=8 ";
+            $this->p_sql->query($consulta);
+            $row      = $this->p_sql->retorna();
+            $num      = $this->p_sql->numerodelinhas();
+             
+             if ( $num > 0 ) {
+               $return = $row;
+             }else{
+               $return = array('' => 0);
+             }
+             
+             return $return; 
+         }
+
+         public function setconfirmPedido($hash,$status=7){
+
+            $consulta = "UPDATE `tvenda` set vnd_campo4={$status} WHERE vnd_campo1='{$hash}' and vnd_lojavirtual='1' and vnd_campo4='6' ";
+            $this->p_sql->query($consulta);
+                           
+            if ( isset($this->p_sql->last_error) ) {
+               $return  = array('status' => 'error','msg' => $this->p_sql->last_error);
+            }else{
+               $return  = array('status' => 'success','msg' => 'pedido' . $hash .' confirmado!');
+            }
+             
+             return $return; 
+         }
+
 
         public function checkuserExist($email) {
              
